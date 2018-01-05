@@ -1,48 +1,50 @@
+# Cargamos librerías
+import argparse
 import numpy as np
 from keras import backend as K
-import os
-import matplotlib
-matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from keras.optimizers import RMSprop
-from keras import regularizers
 from keras.models import Model, Sequential
-from keras.layers import Input, Bidirectional, Conv1D, MaxPooling1D, Dense, Lambda, LSTM, Dropout, BatchNormalization, Activation
-from keras.regularizers import l2
+from keras.layers import Input, Conv1D, MaxPooling1D, Lambda, LSTM, Dropout, BatchNormalization, Activation
 
-def LoadData():
-	Xtrain = np.load('../../datos/charEmbedding400x300/XtrainCharEmbedding.npy')
-	Ytrain = np.load('../../datos/charEmbedding400x300/Ytran.npy')
-	Xtest = np.load('../../datos/charEmbedding400x300/XtestCharEmbedding.npy')
-	Ytest = np.load('../../datos/charEmbedding400x300/Ytest.npy')
+def LoadData(path_Xtrain, path_Ytrain, path_xtest, path_ytest):
+# Funcin para cargar datos y separarlos para cada una de las entradas de la arquitectura siamese
+	Xtrain = np.load(path_Xtrain)
+	Ytrain = np.load(path_Ytrain)
+	Xtest = np.load(path_xtest)
+	Ytest = np.load(path_ytest)
 
-	XtrainLeft = Xtrain[:,0:400]
-	XtrainRigth = Xtrain[:,400:800]
-	XtestLeft = Xtest[:,0:400]
-	XtestRigth = Xtest[:,400:800]
+	XtrainLeft = Xtrain[:,0:800]
+	XtrainRigth = Xtrain[:,800:1600]
+	XtestLeft = Xtest[:,0:800]
+	XtestRigth = Xtest[:,800:1600]
 
 	longitud = XtrainLeft.shape[1]
 	dimension = XtrainLeft.shape[2]
 
 	return XtrainLeft, XtrainRigth, Ytrain, XtestLeft, XtestRigth, Ytest, longitud, dimension
 
-def NeuralNet(longitud, dimension):
+def SiameseArquitecture(longitud, dimension):
+# Arquitectura Siamese
+
 	model = Sequential()
 	model.add(Conv1D(75, 12, input_shape=(longitud, dimension)))
 	model.add(Activation('relu'))
-	model.add(Dropout(0.01))
+	model.add(Dropout(0.1))
 	model.add(BatchNormalization())
 	model.add(Conv1D(50, 12))
 	model.add(Activation('relu'))
-	model.add(Dropout(0.01))
+	model.add(Dropout(0.1))
 	model.add(BatchNormalization())
 	model.add(MaxPooling1D(4))
 	model.add(LSTM(64, recurrent_dropout=0.1, return_sequences=False))
 	model.add(Activation('relu'))
+	
 	model.summary()
 	return model
 
 def euclidean_distance(vects):
+# Definición de distancia ecuclidiana
 	x, y = vects
 	return K.sqrt(K.maximum(K.sum(K.square(x - y), axis=1, keepdims=True), K.epsilon()))
 
@@ -50,33 +52,48 @@ def eucl_dist_output_shape(shapes):
 	shape1, shape2 = shapes	
 	return (shape1[0], 1)
 
-def contrastive_loss(y_true, y_pred):
-	margin = 1
-	return K.mean(y_true * K.square(y_pred) + (1 - y_true) * K.square(K.maximum(margin - y_pred, 0)))
-
 def compute_accuracy(predictions, labels):
+# Cálculo de la exactitud
 	return labels[predictions.ravel() < 0.5].mean()
 
-np.random.seed(9)
-XtrainLeft, XtrainRigth, Ytrain, XtestLeft, XtestRigth, Ytest, longitud, dimension = LoadData()
+parser = argparse.ArgumentParser()
+parser.add_argument("-X", "--path_Xtrain", help="Path X train")
+parser.add_argument("-Y", "--path_Ytrain", help="Path Y train")
+parser.add_argument("-x", "--path_xtest", help="Path x test")
+parser.add_argument("-y", "--path_ytest", help="Path y test")
 
-Siamese = NeuralNet(longitud, dimension)
+args = parser.parse_args()
+path_Xtrain = args.path_Xtrain
+path_Ytrain = args.path_Ytrain
+path_xtest = args.path_xtest
+path_ytest = args.path_ytest
+
+np.random.seed(9)
+XtrainLeft, XtrainRigth, Ytrain, XtestLeft, XtestRigth, Ytest, longitud, dimension = LoadData(path_Xtrain,
+											     path_Ytrain,
+											     path_xtest,
+											     path_ytest)
+# Llamado de la función de la arquitectura siamese
+Siamese = SiameseArquitecture(longitud, dimension)
+# Declaración de cada entrada a la red neuronal
 input1 = Input(shape=(longitud,dimension))
 input2 = Input(shape=(longitud,dimension))
-
+# Entrada a la red neuronal
 brenchLeft = Siamese(input1)
 brenchRight = Siamese(input2)
-
+# Cálculo de la distancia euclidiana del vector resultante
 distance = Lambda(euclidean_distance, output_shape=eucl_dist_output_shape)([brenchLeft, brenchRight])
 
 rms = RMSprop()
+#Inicialización del modelo
 model = Model([input1,input2], distance)
-model.compile(loss=contrastive_loss, optimizer=rms)
+model.compile(loss='mean_squared_error', optimizer=rms)
 
 tracc, tsacc = [], []
 trloss, tsloss = [], []
-for i in range(300):
-	print("---------- Epoch: ", i+1)
+# Ciclo para evaluar 100 épocas
+for i in range(100):
+	print("->Epoch: ", i+1)
 	history = model.fit([XtrainLeft, XtrainRigth], Ytrain, 
 	validation_data=([XtestLeft, XtestRigth],Ytest), epochs=1, batch_size=512)
 	pred = model.predict([XtrainLeft, XtrainRigth])
@@ -86,46 +103,5 @@ for i in range(300):
 	print("Train acc: ", tr_acc)
 	print("Test acc: ", te_acc)
 
-	tracc.append(tr_acc)
-	tsacc.append(te_acc)
-	trloss.append(history.history['loss'])
-	tsloss.append(history.history['val_loss'])
-
-np.save('TrainAcc.npy', tracc)
-np.save('TestAcc.npy', tsacc)
-np.save('TrainLoss.npy',trloss)
-np.save('TestLoss.npy',tsloss)
-# summarize history for loss
+# Grabado del modelo entrenado
 model.save('lstm_model.h5')
-
-xrango = np.arange(0, 210, 10)
-yrango = np.arange(0.4, 1, 0.05)
-y_rango = np.arange(0.4, 0, -0.05)
-
-fig = plt.figure()
-plt.plot(trloss, color='green')
-plt.plot(tsloss, color='blue')
-plt.title('Pérdida en el modelo')
-plt.ylabel('Error')
-plt.xlabel('Epocas')
-leg = plt.legend(['Entrenamiento', 'Prueba'], loc='upper right')
-leg_lines = leg.get_lines()
-plt.setp(leg_lines, linewidth=3)
-plt.xticks(xrango)
-plt.yticks(y_rango)
-plt.grid()
-fig.savefig('error.png')
-
-fig1 = plt.figure()
-plt.plot(tracc, color='teal', linewidth=0.4)
-plt.plot(tsacc, color='tomato', linewidth=0.4)
-plt.title('Efectividad en el modelo')
-plt.ylabel('Efectividad')
-plt.xlabel('Epocas')
-leg = plt.legend(['Entrenamiento', 'Prueba'], loc='upper left')
-leg_lines = leg.get_lines()
-plt.setp(leg_lines, linewidth=3)
-plt.xticks(xrango)
-plt.yticks(yrango)
-plt.grid()
-fig1.savefig('efectividad.png')
