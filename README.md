@@ -11,3 +11,6 @@ The model proposed is based on the idea that it can learn a function that may de
 
 # The model
 The model receives two inputs wich are a pair of sequences of character embeddings that represents a document from a author given each one. Each sequence pass through a first convolutional layer wich extract local features from fragments of the sequence, next the second convolutional layer extracts features from the features extracted from the first convolutional layer, next the maxpooling layer extracts the most important feature wich describes the author's style, after that these features are passed through a LSTM wich learns the sign or the author's style.
+<p align="center">
+  <img src="https://github.com/FernandoLpz/AuthorVerificiation/blob/master/images/siamesearquitecture.png" width="550"/>
+</p>
