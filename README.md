@@ -14,3 +14,12 @@ The model receives two inputs wich are a pair of sequences of character embeddin
 <p align="center">
   <img src="https://github.com/FernandoLpz/AuthorVerificiation/blob/master/images/siamesearquitecture.png" width="550"/>
 </p>
+
+# Citation
+```
+@article{FerLpzV2018,
+author = {Fernando-López, Gibrán-Fuentes and Fabian-Garcia},
+title = {Authorship Verification from Texts through Convolutional and Recurrent Neural Networks},
+year = {2018},
+}
+```
